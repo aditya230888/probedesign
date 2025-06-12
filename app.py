@@ -1,32 +1,10 @@
-from flask import Flask, request, render_template, jsonify
+from flask import Flask, request, render_template
 from Bio import Entrez, SeqIO
-from uuid import uuid4
+from Bio.Blast import NCBIWWW, NCBIXML
 import primer3
-import json
-import os
-from blast_worker import blast_task
 
 app = Flask(__name__)
-BLAST_RESULT_FILE = "blast_cache.json"
-Entrez.email = "your_email@example.com"  # Required by NCBI
-
-# Ensure BLAST result cache
-if not os.path.exists(BLAST_RESULT_FILE):
-    with open(BLAST_RESULT_FILE, "w") as f:
-        json.dump({}, f)
-
-def save_blast_result(job_id, result):
-    with open(BLAST_RESULT_FILE, "r+") as f:
-        data = json.load(f)
-        data[job_id] = result
-        f.seek(0)
-        json.dump(data, f)
-        f.truncate()
-
-def get_blast_result(job_id):
-    with open(BLAST_RESULT_FILE) as f:
-        data = json.load(f)
-    return data.get(job_id)
+Entrez.email = "aditya@retrobiotech.in"  # Use your actual email
 
 def fetch_sequence_from_ncbi(term):
     try:
@@ -40,6 +18,14 @@ def fetch_sequence_from_ncbi(term):
         return str(seq_record.seq)
     except Exception as e:
         return None
+
+def run_blast(seq):
+    try:
+        result_handle = NCBIWWW.qblast("blastn", "nt", seq)
+        blast_record = NCBIXML.read(result_handle)
+        return blast_record.alignments[0].hit_def if blast_record.alignments else "No hits found"
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -64,26 +50,13 @@ def index():
         rev = primers["PRIMER_RIGHT_0_SEQUENCE"]
         probe = primers["PRIMER_INTERNAL_0_SEQUENCE"]
 
-        result["primers"] = {
-            "Forward": {"seq": fwd, "job_id": str(uuid4())},
-            "Reverse": {"seq": rev, "job_id": str(uuid4())},
-            "Probe": {"seq": probe, "job_id": str(uuid4())}
-        }
-
-        # Launch BLAST jobs
-        for primer in result["primers"].values():
-            blast_task.apply_async(args=[primer["seq"], primer["job_id"]])
+        result["Forward"] = {"seq": fwd, "blast": run_blast(fwd)}
+        result["Reverse"] = {"seq": rev, "blast": run_blast(rev)}
+        result["Probe"] = {"seq": probe, "blast": run_blast(probe)}
 
         return render_template("index.html", result=result, name=name)
 
     return render_template("index.html", result=None)
-
-@app.route("/blast_result/<job_id>")
-def blast_result(job_id):
-    result = get_blast_result(job_id)
-    if result:
-        return jsonify({"ready": True, "result": result})
-    return jsonify({"ready": False})
 
 if __name__ == "__main__":
     import os
