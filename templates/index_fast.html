@@ -1,0 +1,44 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Primer & Probe Designer</title>
+    <script>
+        async function pollBlast(label, seq) {
+            const el = document.getElementById(label + "-blast");
+            el.textContent = "🔄 Checking...";
+            try {
+                const res = await fetch("/blast?seq=" + seq);
+                const data = await res.json();
+                el.textContent = "✅ " + data.result;
+            } catch (e) {
+                el.textContent = "⚠️ Failed to load result.";
+            }
+        }
+    </script>
+</head>
+<body>
+    <h2>🧬 qPCR Primer Designer</h2>
+    <form method="post">
+        <label for="name">Gene or Pathogen Name:</label>
+        <input type="text" name="name" required size="50">
+        <button type="submit">Design</button>
+    </form>
+
+    {% if error %}
+        <p style="color:red;">{{ error }}</p>
+    {% endif %}
+
+    {% if result %}
+        <h3>Results for: {{ name }}</h3>
+        <ul>
+            {% for label, info in result.items() %}
+            <li><strong>{{ label }}:</strong> {{ info.seq }}<br>
+            <span id="{{ label }}-blast">⏳ Pending...</span>
+            <script>pollBlast("{{ label }}", "{{ info.seq }}")</script>
+            </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</body>
+</html>
