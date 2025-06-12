@@ -1,27 +1,27 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>qPCR Primer Designer with BLAST</title>
+    <title>Primer & Probe Designer</title>
     <script>
-        async function pollResult(jobId, label) {
-            const res = await fetch("/blast_result/" + jobId);
-            const data = await res.json();
-            const el = document.getElementById(label + "-status");
-            if (data.ready) {
+        async function pollBlast(label, seq) {
+            const el = document.getElementById(label + "-blast");
+            el.textContent = "🔄 Checking...";
+            try {
+                const res = await fetch("/blast?seq=" + seq);
+                const data = await res.json();
                 el.textContent = "✅ " + data.result;
-            } else {
-                el.textContent = "🔄 Pending...";
-                setTimeout(() => pollResult(jobId, label), 3000);
+            } catch (e) {
+                el.textContent = "⚠️ Failed to load result.";
             }
         }
     </script>
 </head>
 <body>
-    <h2>🔬 qPCR Primer + Probe Designer with BLAST</h2>
+    <h2>🧬 qPCR Primer Designer</h2>
     <form method="post">
-        <label for="name">Enter Gene or Pathogen Name:</label><br>
-        <input type="text" id="name" name="name" size="60" required>
-        <button type="submit">Design Primers</button>
+        <label for="name">Gene or Pathogen Name:</label>
+        <input type="text" name="name" required size="50">
+        <button type="submit">Design</button>
     </form>
 
     {% if error %}
@@ -29,16 +29,15 @@
     {% endif %}
 
     {% if result %}
-    <h3>🧬 Designed Primers for: {{ name }}</h3>
-    <ul>
-        {% for label, info in result.primers.items() %}
-        <li>
-            <strong>{{ label }}:</strong> {{ info.seq }}<br>
-            <span id="{{ label }}-status">🔄 Checking specificity...</span>
-            <script>pollResult("{{ info.job_id }}", "{{ label }}")</script>
-        </li>
-        {% endfor %}
-    </ul>
+        <h3>Results for: {{ name }}</h3>
+        <ul>
+            {% for label, info in result.items() %}
+            <li><strong>{{ label }}:</strong> {{ info.seq }}<br>
+            <span id="{{ label }}-blast">⏳ Pending...</span>
+            <script>pollBlast("{{ label }}", "{{ info.seq }}")</script>
+            </li>
+            {% endfor %}
+        </ul>
     {% endif %}
 </body>
 </html>
