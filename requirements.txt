@@ -1,0 +1,5 @@
+flask
+biopython
+primer3-py
+celery
+redis
