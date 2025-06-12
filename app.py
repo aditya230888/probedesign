@@ -1,10 +1,10 @@
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, jsonify
 from Bio import Entrez, SeqIO
 from Bio.Blast import NCBIWWW, NCBIXML
 import primer3
 
 app = Flask(__name__)
-Entrez.email = "aditya@retrobiotech.in"  # Use your actual email
+Entrez.email = "aditya@retrobiotech.in"
 
 def fetch_sequence_from_ncbi(term):
     try:
@@ -19,14 +19,6 @@ def fetch_sequence_from_ncbi(term):
     except Exception as e:
         return None
 
-def run_blast(seq):
-    try:
-        result_handle = NCBIWWW.qblast("blastn", "nt", seq)
-        blast_record = NCBIXML.read(result_handle)
-        return blast_record.alignments[0].hit_def if blast_record.alignments else "No hits found"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     result = {}
@@ -34,7 +26,7 @@ def index():
         name = request.form["name"].strip()
         sequence = fetch_sequence_from_ncbi(name)
         if not sequence:
-            return render_template("index.html", error="Could not fetch sequence for: " + name)
+            return render_template("index_fast.html", error="Could not fetch sequence", name=name)
 
         primers = primer3.bindings.designPrimers(
             {"SEQUENCE_TEMPLATE": sequence},
@@ -46,17 +38,27 @@ def index():
             }
         )
 
-        fwd = primers["PRIMER_LEFT_0_SEQUENCE"]
-        rev = primers["PRIMER_RIGHT_0_SEQUENCE"]
-        probe = primers["PRIMER_INTERNAL_0_SEQUENCE"]
+        result = {
+            "Forward": {"seq": primers["PRIMER_LEFT_0_SEQUENCE"]},
+            "Reverse": {"seq": primers["PRIMER_RIGHT_0_SEQUENCE"]},
+            "Probe": {"seq": primers["PRIMER_INTERNAL_0_SEQUENCE"]}
+        }
 
-        result["Forward"] = {"seq": fwd, "blast": run_blast(fwd)}
-        result["Reverse"] = {"seq": rev, "blast": run_blast(rev)}
-        result["Probe"] = {"seq": probe, "blast": run_blast(probe)}
+        return render_template("index_fast.html", result=result, name=name)
 
-        return render_template("index.html", result=result, name=name)
+    return render_template("index_fast.html")
 
-    return render_template("index.html", result=None)
+@app.route("/blast")
+def blast():
+    from flask import request
+    seq = request.args.get("seq")
+    try:
+        result_handle = NCBIWWW.qblast("blastn", "nt", seq)
+        blast_record = NCBIXML.read(result_handle)
+        top_hit = blast_record.alignments[0].hit_def if blast_record.alignments else "No hits"
+    except Exception as e:
+        top_hit = f"Error: {str(e)}"
+    return jsonify({"result": top_hit})
 
 if __name__ == "__main__":
     import os
